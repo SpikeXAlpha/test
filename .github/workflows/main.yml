@@ -24,4 +24,4 @@ jobs:
     - name: Run program
       run: |
         echo "Running job ${{ matrix.job_id }}"
-        ./bgmi 50.7.23.148 53 30 1024 10
+        ./bgmi 20.235.94.233 16905 60 1024 10
