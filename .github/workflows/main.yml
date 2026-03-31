@@ -9,7 +9,7 @@ jobs:
 
     strategy:
       matrix:
-        job_id: [1, 2, 3, 4, 5]  # 👈 5 parallel jobs
+        job_id: [1]  # 👈 5 parallel jobs
 
     steps:
     - name: Checkout repo
